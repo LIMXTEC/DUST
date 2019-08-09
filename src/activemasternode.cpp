@@ -1,16 +1,16 @@
 
-#include "signhelper_mn.h"//
+#include "core.h"
 #include "protocol.h"
 #include "activemasternode.h"
 #include "masternodeman.h"
-#include "netaddress.h"
+#include "main.h"
 #include <boost/lexical_cast.hpp>
-//CConnman connman1; // def as extern in header of same
+
 //
 // Bootup the Masternode, look for a 5000 BSD input and register on the network
 //
 void CActiveMasternode::ManageStatus()
-{	
+{
     std::string errorMessage;
 
     if(!fMasterNode) return;
@@ -38,15 +38,12 @@ void CActiveMasternode::ManageStatus()
                 return;
             }
         } else {
-            //service = CService(strMasterNodeAddr);
-			//safe point
-			CService service2(LookupNumeric(strMasterNodeAddr.c_str(), 0));
-			service = service2;
+            service = CService(strMasterNodeAddr);
         }
 
         LogPrintf("CActiveMasternode::ManageStatus() - Checking inbound connection to '%s'\n", service.ToString().c_str());
 
-        if(Params().NetworkIDString() == "main"){
+        if(Params().NetworkID() == CChainParams::MAIN){
             if(service.GetPort() != 8886) {
                 notCapableReason = "Invalid port: " + boost::lexical_cast<string>(service.GetPort()) + " - only 8886 is supported on mainnet.";
                 status = MASTERNODE_NOT_CAPABLE;
@@ -59,19 +56,13 @@ void CActiveMasternode::ManageStatus()
             LogPrintf("CActiveMasternode::ManageStatus() - not capable: %s\n", notCapableReason.c_str());
             return;
         }
-		
-		bool pnode1 = g_connman->OpenNetworkConnection((CAddress)service, false, NULL, service.ToString().c_str());
-		/**We try here to stablish a connection, 
-		* Since if we are running masternode, then client will connect to itself
-		* to avoid it , we try a connection, and leave
-		* This is the expected.
-				if(pnode1){//todo++ object added
-					notCapableReason = "Could not connect to " + service.ToString();
-					status = MASTERNODE_NOT_CAPABLE;
-					LogPrintf("CActiveMasternode::ManageStatus() - not capable: %s\n", notCapableReason.c_str());
-					return;
-				}
-		**/
+
+        if(!ConnectNode((CAddress)service, service.ToString().c_str())){
+            notCapableReason = "Could not connect to " + service.ToString();
+            status = MASTERNODE_NOT_CAPABLE;
+            LogPrintf("CActiveMasternode::ManageStatus() - not capable: %s\n", notCapableReason.c_str());
+            return;
+        }
 
         if(pwalletMain->IsLocked()){
             notCapableReason = "Wallet is locked.";
@@ -146,9 +137,8 @@ bool CActiveMasternode::StopMasterNode(std::string strService, std::string strKe
         LogPrintf("CActiveMasternode::StopMasterNode() - Error: %s\n", errorMessage.c_str());
         return false;
     }
-	CService service(LookupNumeric(strService.c_str(), 0));
 
-    return StopMasterNode(vin, service, keyMasternode, pubKeyMasternode, errorMessage);
+    return StopMasterNode(vin, CService(strService), keyMasternode, pubKeyMasternode, errorMessage);
 }
 
 // Send stop dseep to network for main Masternode
@@ -238,8 +228,8 @@ bool CActiveMasternode::Dseep(CTxIn vin, CService service, CKey keyMasternode, C
     }
 
     //send to all peers
-    LogPrintf("CActiveMasternode::Dseep() - RelayNormalMasternodeEntryPing vin = %s\n", vin.ToString().c_str());
-    mnodeman.RelayNormalMasternodeEntryPing(vin, vchMasterNodeSignature, masterNodeSignatureTime, stop);
+    LogPrintf("CActiveMasternode::Dseep() - RelayMasternodeEntryPing vin = %s\n", vin.ToString().c_str());
+    mnodeman.RelayMasternodeEntryPing(vin, vchMasterNodeSignature, masterNodeSignatureTime, stop);
 
     return true;
 }
@@ -265,7 +255,7 @@ bool CActiveMasternode::Register(std::string strService, std::string strKeyMaste
         return false;
     }
 
-    CBitsendAddress address;
+    CBitcoinAddress address;
     if (strDonationAddress != "")
     {
         if(!address.SetString(strDonationAddress))
@@ -273,8 +263,8 @@ bool CActiveMasternode::Register(std::string strService, std::string strKeyMaste
             LogPrintf("CActiveMasternode::Register - Invalid Donation Address\n");
             return false;
         }
-        //donationAddress.SetDestination(address.Get());
-		donationAddress = GetScriptForDestination(address.Get());//todo++
+        donationAddress.SetDestination(address.Get());
+
         try {
             donationPercentage = boost::lexical_cast<int>( strDonationPercentage );
         } catch( boost::bad_lexical_cast const& ) {
@@ -288,9 +278,8 @@ bool CActiveMasternode::Register(std::string strService, std::string strKeyMaste
             return false;
         }
     }
-	CService service(LookupNumeric(strService.c_str(), 0));
 
-    return Register(vin, service, keyCollateralAddress, pubKeyCollateralAddress, keyMasternode, pubKeyMasternode, donationAddress, donationPercentage, errorMessage);
+    return Register(vin, CService(strService), keyCollateralAddress, pubKeyCollateralAddress, keyMasternode, pubKeyMasternode, donationAddress, donationPercentage, errorMessage);
 }
 
 bool CActiveMasternode::Register(CTxIn vin, CService service, CKey keyCollateralAddress, CPubKey pubKeyCollateralAddress, CKey keyMasternode, CPubKey pubKeyMasternode, CScript donationAddress, int donationPercentage, std::string &retErrorMessage) {
@@ -327,7 +316,7 @@ bool CActiveMasternode::Register(CTxIn vin, CService service, CKey keyCollateral
 
     //send to all peers
     LogPrintf("CActiveMasternode::Register() - RelayElectionEntry vin = %s\n", vin.ToString().c_str());
-    mnodeman.RelayNormalMasternodeEntry(vin, service, vchMasterNodeSignature, masterNodeSignatureTime, pubKeyCollateralAddress, pubKeyMasternode, -1, -1, masterNodeSignatureTime, PROTOCOL_VERSION, donationAddress, donationPercentage);
+    mnodeman.RelayMasternodeEntry(vin, service, vchMasterNodeSignature, masterNodeSignatureTime, pubKeyCollateralAddress, pubKeyMasternode, -1, -1, masterNodeSignatureTime, PROTOCOL_VERSION, donationAddress, donationPercentage);
 
     return true;
 }
@@ -344,10 +333,9 @@ bool CActiveMasternode::GetMasterNodeVin(CTxIn& vin, CPubKey& pubkey, CKey& secr
     COutput *selectedOutput;
 
     // Find the vin
-    if(!strTxHash.empty()) {//todo++ str copy to vch
+    if(!strTxHash.empty()) {
         // Let's find it
-		uint256 txHash;
-		txHash.SetHex(strTxHash);
+        uint256 txHash(strTxHash);
         int outputIndex = boost::lexical_cast<int>(strOutputIndex);
         bool found = false;
         BOOST_FOREACH(COutput& out, possibleCoins) {
@@ -383,11 +371,11 @@ bool CActiveMasternode::GetVinFromOutput(COutput out, CTxIn& vin, CPubKey& pubke
     CScript pubScript;
 
     vin = CTxIn(out.tx->GetHash(),out.i);
-    pubScript = out.tx->tx->vout[out.i].scriptPubKey; // the inputs PubKey//todo++
+    pubScript = out.tx->vout[out.i].scriptPubKey; // the inputs PubKey
 
     CTxDestination address1;
     ExtractDestination(pubScript, address1);
-    CBitsendAddress address2(address1);
+    CBitcoinAddress address2(address1);
 
     CKeyID keyID;
     if (!address2.GetKeyID(keyID)) {
@@ -416,7 +404,7 @@ vector<COutput> CActiveMasternode::SelectCoinsMasternode()
     // Filter
     BOOST_FOREACH(const COutput& out, vCoins)
     {
-        if(out.tx->tx->vout[out.i].nValue == MASTERNODEAMOUNT*COIN) { //exactly        bitsenddev   04-2015
+        if(out.tx->vout[out.i].nValue == MASTERNODEAMOUNT*COIN) { //exactly        bitsenddev   04-2015
             filteredCoins.push_back(out);
         }
     }

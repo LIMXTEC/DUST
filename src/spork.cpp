@@ -1,19 +1,16 @@
 
 
 
-//#include "bignum.h"
+#include "bignum.h"
 #include "sync.h"
 #include "net.h"
 #include "key.h"
 #include "util.h"
-#include "script/script.h"
+#include "script.h"
 #include "base58.h"
 #include "protocol.h"
 #include "spork.h"
-#include "signhelper_mn.h"
-#include "netmessagemaker.h"
-
-#include "net_processing.h"
+#include "main.h"
 #include <boost/lexical_cast.hpp>
 
 using namespace std;
@@ -22,15 +19,13 @@ using namespace boost;
 class CSporkMessage;
 class CSporkManager;
 
-
-
 CSporkManager sporkManager;
 
 std::map<uint256, CSporkMessage> mapSporks;
 std::map<int, CSporkMessage> mapSporksActive;
 
 
-void ProcessSpork(CNode* pfrom, const std::string& strCommand, CDataStream& vRecv, CConnman& connman)
+void ProcessSpork(CNode* pfrom, std::string& strCommand, CDataStream& vRecv)
 {
     if(fProUserModeDarksendInstantX2) return; //disable all darksend/masternode related functionality
 
@@ -63,7 +58,7 @@ void ProcessSpork(CNode* pfrom, const std::string& strCommand, CDataStream& vRec
 
         mapSporks[hash] = spork;
         mapSporksActive[spork.nSporkID] = spork;
-        sporkManager.Relay(spork, connman);
+        sporkManager.Relay(spork);
 
         //does a task if needed
         ExecuteSpork(spork.nSporkID, spork.nValue);
@@ -73,8 +68,7 @@ void ProcessSpork(CNode* pfrom, const std::string& strCommand, CDataStream& vRec
         std::map<int, CSporkMessage>::iterator it = mapSporksActive.begin();
 
         while(it != mapSporksActive.end()) {
-            //pfrom->PushMessage("spork", it->second);//todo++
-			connman.PushMessage(pfrom, CNetMsgMaker(PROTOCOL_VERSION).Make(SERIALIZE_TRANSACTION_NO_WITNESS, "spork", it->second));
+            pfrom->PushMessage("spork", it->second);
             it++;
         }
     }
@@ -131,9 +125,8 @@ bool CSporkManager::CheckSignature(CSporkMessage& spork)
 {
     //note: need to investigate why this is failing
     std::string strMessage = boost::lexical_cast<std::string>(spork.nSporkID) + boost::lexical_cast<std::string>(spork.nValue) + boost::lexical_cast<std::string>(spork.nTimeSigned);
-    std::string strPubKey = (Params().NetworkIDString() == "main") ? strMainPubKey : strTestPubKey;//todo++netid
-	
-	CPubKey pubkey(ParseHex(strPubKey));
+    std::string strPubKey = (Params().NetworkID() == CChainParams::MAIN) ? strMainPubKey : strTestPubKey;
+    CPubKey pubkey(ParseHex(strPubKey));
 
     std::string errorMessage = "";
     if(!darkSendSigner.VerifyMessage(pubkey, spork.vchSig, strMessage, errorMessage)){
@@ -170,7 +163,7 @@ bool CSporkManager::Sign(CSporkMessage& spork)
     return true;
 }
 
-bool CSporkManager::UpdateSpork(int nSporkID, int64_t nValue)//CAmount
+bool CSporkManager::UpdateSpork(int nSporkID, int64_t nValue)
 {
 
     CSporkMessage msg;
@@ -179,7 +172,7 @@ bool CSporkManager::UpdateSpork(int nSporkID, int64_t nValue)//CAmount
     msg.nTimeSigned = GetTime();
 
     if(Sign(msg)){
-        RelayUpdateSpork(msg);
+        Relay(msg);
         mapSporks[msg.GetHash()] = msg;
         mapSporksActive[nSporkID] = msg;
         return true;
@@ -188,36 +181,16 @@ bool CSporkManager::UpdateSpork(int nSporkID, int64_t nValue)//CAmount
     return false;
 }
 
-void CSporkManager::Relay(CSporkMessage& msg, CConnman& connman)
+void CSporkManager::Relay(CSporkMessage& msg)
 {
     CInv inv(MSG_SPORK, msg.GetHash());
 
     vector<CInv> vInv;
     vInv.push_back(inv);
-    /*LOCK(cs_vNodes);
+    LOCK(cs_vNodes);
     BOOST_FOREACH(CNode* pnode, vNodes){
         pnode->PushMessage("inv", vInv);
-    }*/
-	connman.ForEachNode([&vInv, &connman](CNode* pnode)
-    {
-        connman.PushMessage(pnode, CNetMsgMaker(PROTOCOL_VERSION).Make(SERIALIZE_TRANSACTION_NO_WITNESS, "inv", vInv));
-    });
-}
-
-void CSporkManager::RelayUpdateSpork(CSporkMessage& msg)
-{
-    CInv inv(MSG_SPORK, msg.GetHash());
-
-    vector<CInv> vInv;
-    vInv.push_back(inv);
-    /*LOCK(cs_vNodes);
-    BOOST_FOREACH(CNode* pnode, vNodes){
-        pnode->PushMessage("inv", vInv);
-    }*/
-	g_connman->ForEachNode([&vInv](CNode* pnode)
-    {
-        g_connman->PushMessage(pnode, CNetMsgMaker(PROTOCOL_VERSION).Make(SERIALIZE_TRANSACTION_NO_WITNESS, "inv", vInv));
-    });
+    }
 }
 
 bool CSporkManager::SetPrivKey(std::string strPrivKey)

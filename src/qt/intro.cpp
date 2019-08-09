@@ -1,10 +1,7 @@
-// Copyright (c) 2011-2016 The Bitsend Core developers
-// Distributed under the MIT software license, see the accompanying
+// Copyright (c) 2011-2014 The Bitcoin developers
+// Copyright (c) 2014-2015 The Bitsend developers
+// Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
-
-#if defined(HAVE_CONFIG_H)
-#include "config/bitsend-config.h"
-#endif
 
 #include "intro.h"
 #include "ui_intro.h"
@@ -19,15 +16,9 @@
 #include <QSettings>
 #include <QMessageBox>
 
-#include <cmath>
-
+/* Minimum free space (in bytes) needed for data directory */
 static const uint64_t GB_BYTES = 1000000000LL;
-/* Minimum free space (in GB) needed for data directory */
-static const uint64_t BLOCK_CHAIN_SIZE = 2;
-/* Minimum free space (in GB) needed for data directory when pruned; Does not include prune target */
-static const uint64_t CHAIN_STATE_SIZE = 1;
-/* Total required space (in GB) depending on user choice (prune, not prune) */
-static uint64_t requiredSpace;
+static const uint64_t BLOCK_CHAIN_SIZE = 1LL * GB_BYTES;
 
 /* Check free space asynchronously to prevent hanging the UI thread.
 
@@ -51,10 +42,10 @@ public:
         ST_ERROR
     };
 
-public Q_SLOTS:
+public slots:
     void check();
 
-Q_SIGNALS:
+signals:
     void reply(int status, const QString &message, quint64 available);
 
 private:
@@ -63,9 +54,9 @@ private:
 
 #include "intro.moc"
 
-FreespaceChecker::FreespaceChecker(Intro *_intro)
+FreespaceChecker::FreespaceChecker(Intro *intro)
 {
-    this->intro = _intro;
+    this->intro = intro;
 }
 
 void FreespaceChecker::check()
@@ -105,13 +96,13 @@ void FreespaceChecker::check()
                 replyMessage = tr("Path already exists, and is not a directory.");
             }
         }
-    } catch (const fs::filesystem_error&)
+    } catch(fs::filesystem_error &e)
     {
         /* Parent directory does not exist or is not accessible */
         replyStatus = ST_ERROR;
         replyMessage = tr("Cannot create data directory here.");
     }
-    Q_EMIT reply(replyStatus, replyMessage, freeBytesAvailable);
+    emit reply(replyStatus, replyMessage, freeBytesAvailable);
 }
 
 
@@ -122,18 +113,7 @@ Intro::Intro(QWidget *parent) :
     signalled(false)
 {
     ui->setupUi(this);
-    ui->welcomeLabel->setText(ui->welcomeLabel->text().arg(tr(PACKAGE_NAME)));
-    ui->storageLabel->setText(ui->storageLabel->text().arg(tr(PACKAGE_NAME)));
-    uint64_t pruneTarget = std::max<int64_t>(0, GetArg("-prune", 0));
-    requiredSpace = BLOCK_CHAIN_SIZE;
-    if (pruneTarget) {
-        uint64_t prunedGBs = std::ceil(pruneTarget * 1024 * 1024.0 / GB_BYTES);
-        if (prunedGBs <= requiredSpace) {
-            requiredSpace = prunedGBs;
-        }
-    }
-    requiredSpace += CHAIN_STATE_SIZE;
-    ui->sizeWarningLabel->setText(ui->sizeWarningLabel->text().arg(tr(PACKAGE_NAME)).arg(requiredSpace));
+    ui->sizeWarningLabel->setText(ui->sizeWarningLabel->text().arg(BLOCK_CHAIN_SIZE/GB_BYTES));
     startThread();
 }
 
@@ -141,7 +121,7 @@ Intro::~Intro()
 {
     delete ui;
     /* Ensure thread is finished before it is deleted */
-    Q_EMIT stopThread();
+    emit stopThread();
     thread->wait();
 }
 
@@ -170,46 +150,45 @@ QString Intro::getDefaultDataDirectory()
     return GUIUtil::boostPathToQString(GetDefaultDataDir());
 }
 
-bool Intro::pickDataDirectory()
+void Intro::pickDataDirectory()
 {
     namespace fs = boost::filesystem;
     QSettings settings;
     /* If data directory provided on command line, no need to look at settings
        or show a picking dialog */
     if(!GetArg("-datadir", "").empty())
-        return true;
+        return;
     /* 1) Default data directory for operating system */
     QString dataDir = getDefaultDataDirectory();
     /* 2) Allow QSettings to override default dir */
     dataDir = settings.value("strDataDir", dataDir).toString();
 
-    if(!fs::exists(GUIUtil::qstringToBoostPath(dataDir)) || GetBoolArg("-choosedatadir", DEFAULT_CHOOSE_DATADIR) || settings.value("fReset", false).toBool() || GetBoolArg("-resetguisettings", false))
+    if(!fs::exists(GUIUtil::qstringToBoostPath(dataDir)) || GetBoolArg("-choosedatadir", false))
     {
         /* If current default data directory does not exist, let the user choose one */
         Intro intro;
         intro.setDataDirectory(dataDir);
-        intro.setWindowIcon(QIcon(":icons/bitsend"));
+        intro.setWindowIcon(QIcon(":icons/bitcoin"));
 
         while(true)
         {
             if(!intro.exec())
             {
                 /* Cancel clicked */
-                return false;
+                exit(0);
             }
             dataDir = intro.getDataDirectory();
             try {
                 TryCreateDirectory(GUIUtil::qstringToBoostPath(dataDir));
                 break;
-            } catch (const fs::filesystem_error&) {
-                QMessageBox::critical(0, tr(PACKAGE_NAME),
-                    tr("Error: Specified data directory \"%1\" cannot be created.").arg(dataDir));
+            } catch(fs::filesystem_error &e) {
+                QMessageBox::critical(0, tr("Bitsend"),
+                    tr("Error: Specified data directory \"%1\" can not be created.").arg(dataDir));
                 /* fall through, back to choosing screen */
             }
         }
 
         settings.setValue("strDataDir", dataDir);
-        settings.setValue("fReset", false);
     }
     /* Only override -datadir if different from the default, to make it possible to
      * override -datadir in the bitsend.conf file in the default data directory
@@ -217,7 +196,6 @@ bool Intro::pickDataDirectory()
      */
     if(dataDir != getDefaultDataDirectory())
         SoftSetArg("-datadir", GUIUtil::qstringToBoostPath(dataDir).string()); // use OS locale for path setting
-    return true;
 }
 
 void Intro::setStatus(int status, const QString &message, quint64 bytesAvailable)
@@ -238,10 +216,10 @@ void Intro::setStatus(int status, const QString &message, quint64 bytesAvailable
     {
         ui->freeSpace->setText("");
     } else {
-        QString freeString = tr("%n GB of free space available", "", bytesAvailable/GB_BYTES);
-        if(bytesAvailable < requiredSpace * GB_BYTES)
+        QString freeString = QString::number(bytesAvailable/GB_BYTES) + tr("GB of free space available");
+        if(bytesAvailable < BLOCK_CHAIN_SIZE)
         {
-            freeString += " " + tr("(of %n GB needed)", "", requiredSpace);
+            freeString += " " + tr("(of %1GB needed)").arg(BLOCK_CHAIN_SIZE/GB_BYTES);
             ui->freeSpace->setStyleSheet("QLabel { color: #800000 }");
         } else {
             ui->freeSpace->setStyleSheet("");
@@ -299,7 +277,7 @@ void Intro::checkPath(const QString &dataDir)
     if(!signalled)
     {
         signalled = true;
-        Q_EMIT requestCheck();
+        emit requestCheck();
     }
     mutex.unlock();
 }

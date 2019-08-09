@@ -1,23 +1,22 @@
-// Copyright (c) 2011-2015 The Bitsend Core developers
-// Distributed under the MIT software license, see the accompanying
+// Copyright (c) 2011-2013 The Bitcoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITSEND_QT_SENDCOINSENTRY_H
-#define BITSEND_QT_SENDCOINSENTRY_H
+#ifndef SENDCOINSENTRY_H
+#define SENDCOINSENTRY_H
 
 #include "walletmodel.h"
 
 #include <QStackedWidget>
 
 class WalletModel;
-class PlatformStyle;
 
 namespace Ui {
     class SendCoinsEntry;
 }
 
 /**
- * A single entry in the dialog for sending bitsends.
+ * A single entry in the dialog for sending bitcoins.
  * Stacked widget, with different UIs for payment requests
  * with a strong payee identity.
  */
@@ -26,7 +25,7 @@ class SendCoinsEntry : public QStackedWidget
     Q_OBJECT
 
 public:
-    explicit SendCoinsEntry(const PlatformStyle *platformStyle, QWidget *parent = 0);
+    explicit SendCoinsEntry(QWidget *parent = 0);
     ~SendCoinsEntry();
 
     void setModel(WalletModel *model);
@@ -46,15 +45,14 @@ public:
 
     void setFocus();
 
-public Q_SLOTS:
+public slots:
     void clear();
 
-Q_SIGNALS:
+signals:
     void removeEntry(SendCoinsEntry *entry);
     void payAmountChanged();
-    void subtractFeeFromAmountChanged();
 
-private Q_SLOTS:
+private slots:
     void deleteClicked();
     void on_payTo_textChanged(const QString &address);
     void on_addressBookButton_clicked();
@@ -65,9 +63,8 @@ private:
     SendCoinsRecipient recipient;
     Ui::SendCoinsEntry *ui;
     WalletModel *model;
-    const PlatformStyle *platformStyle;
 
     bool updateLabel(const QString &address);
 };
 
-#endif // BITSEND_QT_SENDCOINSENTRY_H
+#endif // SENDCOINSENTRY_H

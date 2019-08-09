@@ -4,18 +4,16 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #ifndef MASTERNODE_H
 #define MASTERNODE_H
-#include "utilstrencodings.h"//todo
-#include "arith_uint256.h"//todo
-#include "netmessagemaker.h"//todo
+
+#include "bignum.h"
 #include "sync.h"
 #include "net.h"
 #include "key.h"
-//#include "core.h"
+#include "core.h"
 #include "util.h"
-#include "script/script.h"
+#include "script.h"
 #include "base58.h"
-#include "validation.h"
-#include "net_processing.h"
+#include "main.h"
 #include "masternode-pos.h"
 
 #define MASTERNODE_NOT_PROCESSED               0 // initial state
@@ -40,19 +38,13 @@ using namespace std;
 class CMasternode;
 class CMasternodePayments;
 class CMasternodePaymentWinner;
-class CMasternodePaymentsMessage;
-
-class CMasternodeScanning;
 
 extern CMasternodePayments masternodePayments;
-extern CMasternodePaymentsMessage mnPaymentMessage;
 extern map<uint256, CMasternodePaymentWinner> mapSeenMasternodeVotes;
 extern map<int64_t, uint256> mapCacheBlockHashes;
 
-//void ProcessMessageMasternodePayments(CNode* pfrom, const string& strCommand, CDataStream& vRecv, CConnman& connman);
+void ProcessMessageMasternodePayments(CNode* pfrom, std::string& strCommand, CDataStream& vRecv);
 bool GetBlockHash(uint256& hash, int nBlockHeight);
-
-void ProcessMessageMasternodePayments(CNode* pfrom, const string& strCommand, CDataStream& vRecv, CConnman& connman);
 
 //
 // The Masternode Class. For managing the Darksend process. It contains the input of the 1000DRK, signature to prove
@@ -145,10 +137,8 @@ public:
 
     uint256 CalculateScore(int mod=1, int64_t nBlockHeight=0);
 
-    ADD_SERIALIZE_METHODS;
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action)
-	{
+    IMPLEMENT_SERIALIZE
+    (
         // serialized format:
         // * version byte (currently 0)
         // * all fields (?)
@@ -171,14 +161,14 @@ public:
                 READWRITE(allowFreeTx);
                 READWRITE(protocolVersion);
                 READWRITE(nLastDsq);
-                READWRITE(*(CScriptBase*)(&donationAddress));
+                READWRITE(donationAddress);
                 READWRITE(donationPercentage);
                 READWRITE(nVote);
                 READWRITE(lastVote);
                 READWRITE(nScanningErrorCount);
                 READWRITE(nLastScanningErrorBlockHeight);
         }
-    }
+    )
 
 
     void UpdateLastSeen(int64_t override=0)
@@ -240,13 +230,13 @@ public:
             if(nScanningErrorCount < 0) nScanningErrorCount = 0;
         } else { //all other codes are equally as bad
                     nScanningErrorCount++;
-           // Bitsenddev 04/08/2015 
+           /* Bitsenddev 04/08/2015 
                         if(nScanningErrorCount >= 4)
                         {
                         nScanningErrorCount = 0;
                         LogPrintf("S-Reset Bad Masternodescore \n"); //	Bitsenddev Set this for Debug
                         }
-                        
+                        */
             if(nScanningErrorCount > MASTERNODE_SCANNING_ERROR_THESHOLD*2) nScanningErrorCount = MASTERNODE_SCANNING_ERROR_THESHOLD*2;
         }
     }
@@ -290,33 +280,30 @@ public:
 
     uint256 GetHash()
 	{ 
-		arith_uint256 n2, n3; 
+	uint256 n2, n3; 
 	
-		int nBlockTime = chainActive.Tip()->GetBlockTime();
+	 int nBlockTime = chainActive.Tip()->GetBlockTime();
 	    if (nBlockTime >= FORKX17_Main_Net2)
-		{ 
-			n2 = UintToArith256(XEVAN(BEGIN(nBlockHeight), END(nBlockHeight)));
-			n3 = UintToArith256(vin.prevout.hash) > n2 ? UintToArith256(vin.prevout.hash) - n2 : n2 - UintToArith256(vin.prevout.hash);
-			return ArithToUint256(n3);
-		}
-		else 
-		{
-			n2 = UintToArith256(HashX11(BEGIN(nBlockHeight), END(nBlockHeight)));
-			n3 = UintToArith256(vin.prevout.hash) > n2 ? UintToArith256(vin.prevout.hash) - n2 : n2 - UintToArith256(vin.prevout.hash);
-			return ArithToUint256(n3);
-		}
+	{ 
+    	n2 = XEVAN(BEGIN(nBlockHeight), END(nBlockHeight));
+        n3 = vin.prevout.hash > n2 ? (vin.prevout.hash - n2) : (n2 - vin.prevout.hash);
+        return n3;
+	}
+    else 
+    {
+		n2 = HashX11(BEGIN(nBlockHeight), END(nBlockHeight));
+		n3 = vin.prevout.hash > n2 ? (vin.prevout.hash - n2) : (n2 - vin.prevout.hash);
+		return n3;
+    }
     }
 
-    ADD_SERIALIZE_METHODS;
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action)
-	{
+    IMPLEMENT_SERIALIZE(
         READWRITE(nBlockHeight);
-        READWRITE(*(CScriptBase*)(&payee));//--todo test
+        READWRITE(payee);
         READWRITE(vin);
         READWRITE(score);
         READWRITE(vchSig);
-    }
+     )
 };
 
 //
@@ -359,7 +346,7 @@ public:
     bool AddWinningMasternode(CMasternodePaymentWinner& winner);
     bool ProcessBlock(int nBlockHeight);
     void Relay(CMasternodePaymentWinner& winner);
-    void Sync(CNode* node, CConnman& connman);
+    void Sync(CNode* node);
     void CleanPaymentList();
     int LastPayment(CMasternode& mn);
 

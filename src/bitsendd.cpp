@@ -1,32 +1,20 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2017 The Bitcoin Core developers 
-// Copyright (c) 2015-2017 The Dash developers 
-// Copyright (c) 2015-2017 The Bitsend developers
-// Distributed under the MIT software license, see the accompanying
+// Copyright (c) 2009-2014 The Bitcoin developers
+// Copyright (c) 2014-2015 The Bitsend developers
+// Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#if defined(HAVE_CONFIG_H)
-#include "config/bitsend-config.h"
-#endif
-
-#include "chainparams.h"
-#include "clientversion.h"
-#include "compat.h"
-#include "rpc/server.h"
+#include "rpcserver.h"
+#include "rpcclient.h"
 #include "init.h"
+#include "main.h"
 #include "noui.h"
-#include "scheduler.h"
+#include "ui_interface.h"
 #include "util.h"
-#include "masternodeconfig.h"//TODO--
-#include "httpserver.h"
-#include "httprpc.h"
-#include "utilstrencodings.h"
+#include "masternodeconfig.h"
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem.hpp>
-#include <boost/thread.hpp>
-
-#include <stdio.h>
 
 /* Introduction text for doxygen: */
 
@@ -34,8 +22,8 @@
  *
  * \section intro_sec Introduction
  *
- * This is the developer documentation of the reference client for an experimental new digital currency called bitsend (https://www.bitsend.org/),
- * which enables instant payments to anyone, anywhere in the world. bitsend uses peer-to-peer technology to operate
+ * This is the developer documentation of the reference client for an experimental new digital currency called Bitsend (http://www.bitsendpay.io/),
+ * which enables instant payments to anyone, anywhere in the world. Bitsend uses peer-to-peer technology to operate
  * with no central authority: managing transactions and issuing money are carried out collectively by the network.
  *
  * The software is a community-driven open source project, released under the MIT license.
@@ -44,7 +32,9 @@
  * Use the buttons <code>Namespaces</code>, <code>Classes</code> or <code>Files</code> at the top of the page to start navigating the code.
  */
 
-void WaitForShutdown(boost::thread_group* threadGroup)
+static bool fDaemon;
+
+void DetectShutdownThread(boost::thread_group* threadGroup)
 {
     bool fShutdown = ShutdownRequested();
     // Tell the main threads to shutdown.
@@ -55,7 +45,7 @@ void WaitForShutdown(boost::thread_group* threadGroup)
     }
     if (threadGroup)
     {
-        Interrupt(*threadGroup);
+        threadGroup->interrupt_all();
         threadGroup->join_all();
     }
 }
@@ -67,63 +57,57 @@ void WaitForShutdown(boost::thread_group* threadGroup)
 bool AppInit(int argc, char* argv[])
 {
     boost::thread_group threadGroup;
-    CScheduler scheduler;
+    boost::thread* detectShutdownThread = NULL;
 
     bool fRet = false;
-
-    //
-    // Parameters
-    //
-    // If Qt is used, parameters/bitsend.conf are parsed in qt/bitsend.cpp's main()
-    ParseParameters(argc, argv);
-
-    // Process help and version before taking care about datadir
-    if (IsArgSet("-?") || IsArgSet("-h") ||  IsArgSet("-help") || IsArgSet("-version"))
-    {
-        std::string strUsage = strprintf(_("%s Daemon"), _(PACKAGE_NAME)) + " " + _("version") + " " + FormatFullVersion() + "\n";
-
-        if (IsArgSet("-version"))
-        {
-            strUsage += FormatParagraph(LicenseInfo());
-        }
-        else
-        {
-            strUsage += "\n" + _("Usage:") + "\n" +
-                  "  bitsendd [options]                     " + strprintf(_("Start %s Daemon"), _(PACKAGE_NAME)) + "\n";
-
-            strUsage += "\n" + HelpMessage(HMM_BITSENDD);
-        }
-
-        fprintf(stdout, "%s", strUsage.c_str());
-        return true;
-    }
-
     try
     {
+        //
+        // Parameters
+        //
+        // If Qt is used, parameters/bitsend.conf are parsed in qt/bitsend.cpp's main()
+        ParseParameters(argc, argv);
         if (!boost::filesystem::is_directory(GetDataDir(false)))
         {
-            fprintf(stderr, "Error: Specified data directory \"%s\" does not exist.\n", GetArg("-datadir", "").c_str());
+            fprintf(stderr, "Error: Specified data directory \"%s\" does not exist.\n", mapArgs["-datadir"].c_str());
             return false;
         }
         try
         {
-            ReadConfigFile(GetArg("-conf", BITSEND_CONF_FILENAME));
-        } catch (const std::exception& e) {
+            ReadConfigFile(mapArgs, mapMultiArgs);
+        } catch(std::exception &e) {
             fprintf(stderr,"Error reading configuration file: %s\n", e.what());
             return false;
         }
-        // Check for -testnet or -regtest parameter (Params() calls are only valid after this clause)
-        try {
-            SelectParams(ChainNameFromCommandLine());
-        } catch (const std::exception& e) {
-            fprintf(stderr, "Error: %s\n", e.what());
+
+        // Check for -testnet or -regtest parameter (TestNet() calls are only valid after this clause)
+        if (!SelectParamsFromCommandLine()) {
+            fprintf(stderr, "Error: Invalid combination of -regtest and -testnet.\n");
             return false;
         }
-		/**TODO-- */
-		// parse masternode.conf
+
+        // parse masternode.conf
         std::string strErr;
         if(!masternodeConfig.read(strErr)) {
             fprintf(stderr,"Error reading masternode configuration file: %s\n", strErr.c_str());
+            return false;
+        }
+
+        if (mapArgs.count("-?") || mapArgs.count("--help"))
+        {
+            // First part of help message is specific to bitsendd / RPC client
+            std::string strUsage = _("Bitsend Core Daemon") + " " + _("version") + " " + FormatFullVersion() + "\n\n" +
+                _("Usage:") + "\n" +
+                  "  bitsendd [options]                     " + _("Start Bitsend Core Daemon") + "\n" +
+                _("Usage (deprecated, use bitsend-cli):") + "\n" +
+                  "  bitsendd [options] <command> [params]  " + _("Send command to Bitsend Core") + "\n" +
+                  "  bitsendd [options] help                " + _("List commands") + "\n" +
+                  "  bitsendd [options] help <command>      " + _("Get help for a command") + "\n";
+
+            strUsage += "\n" + HelpMessage(HMM_BITCOIND);
+            strUsage += "\n" + HelpMessageCli(false);
+
+            fprintf(stdout, "%s", strUsage.c_str());
             return false;
         }
 
@@ -135,48 +119,40 @@ bool AppInit(int argc, char* argv[])
 
         if (fCommandLine)
         {
-            fprintf(stderr, "Error: There is no RPC client functionality in bitsendd anymore. Use the bitsend-cli utility instead.\n");
-            exit(EXIT_FAILURE);
+            int ret = CommandLineRPC(argc, argv);
+            exit(ret);
         }
-        // -server defaults to true for bitsendd but not for the GUI so do this here
-        SoftSetBoolArg("-server", true);
-        // Set this early so that parameter interactions go to console
-        InitLogging();
-        InitParameterInteraction();
-        if (!AppInitBasicSetup())
+#ifndef WIN32
+        fDaemon = GetBoolArg("-daemon", false);
+        if (fDaemon)
         {
-            // InitError will have been called with detailed error, which ends up on console
-            exit(1);
-        }
-        if (!AppInitParameterInteraction())
-        {
-            // InitError will have been called with detailed error, which ends up on console
-            exit(1);
-        }
-        if (!AppInitSanityChecks())
-        {
-            // InitError will have been called with detailed error, which ends up on console
-            exit(1);
-        }
-        if (GetBoolArg("-daemon", false))
-        {
-#if HAVE_DECL_DAEMON
-            fprintf(stdout, "bitsend server starting\n");
+            fprintf(stdout, "Bitsend server starting\n");
 
             // Daemonize
-            if (daemon(1, 0)) { // don't chdir (1), do close FDs (0)
-                fprintf(stderr, "Error: daemon() failed: %s\n", strerror(errno));
+            pid_t pid = fork();
+            if (pid < 0)
+            {
+                fprintf(stderr, "Error: fork() returned %d errno %d\n", pid, errno);
                 return false;
             }
-#else
-            fprintf(stderr, "Error: -daemon is not supported on this operating system\n");
-            return false;
-#endif // HAVE_DECL_DAEMON
-        }
+            if (pid > 0) // Parent process, pid is child process id
+            {
+                CreatePidFile(GetPidFile(), pid);
+                return true;
+            }
+            // Child process falls through to rest of initialization
 
-        fRet = AppInitMain(threadGroup, scheduler);
+            pid_t sid = setsid();
+            if (sid < 0)
+                fprintf(stderr, "Error: setsid() returned %d errno %d\n", sid, errno);
+        }
+#endif
+        SoftSetBoolArg("-server", true);
+
+        detectShutdownThread = new boost::thread(boost::bind(&DetectShutdownThread, &threadGroup));
+        fRet = AppInit2(threadGroup);
     }
-    catch (const std::exception& e) {
+    catch (std::exception& e) {
         PrintExceptionContinue(&e, "AppInit()");
     } catch (...) {
         PrintExceptionContinue(NULL, "AppInit()");
@@ -184,12 +160,20 @@ bool AppInit(int argc, char* argv[])
 
     if (!fRet)
     {
-        Interrupt(threadGroup);
+        if (detectShutdownThread)
+            detectShutdownThread->interrupt();
+
+        threadGroup.interrupt_all();
         // threadGroup.join_all(); was left out intentionally here, because we didn't re-test all of
         // the startup-failure cases to make sure they don't result in a hang due to some
         // thread-blocking-waiting-for-another-thread-during-startup case
-    } else {
-        WaitForShutdown(&threadGroup);
+    }
+
+    if (detectShutdownThread)
+    {
+        detectShutdownThread->join();
+        delete detectShutdownThread;
+        detectShutdownThread = NULL;
     }
     Shutdown();
 
@@ -200,8 +184,15 @@ int main(int argc, char* argv[])
 {
     SetupEnvironment();
 
+    bool fRet = false;
+
     // Connect bitsendd signal handlers
     noui_connect();
 
-    return (AppInit(argc, argv) ? EXIT_SUCCESS : EXIT_FAILURE);
+    fRet = AppInit(argc, argv);
+
+    if (fRet && fDaemon)
+        return 0;
+
+    return (fRet ? 0 : 1);
 }

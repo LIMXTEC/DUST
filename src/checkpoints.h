@@ -1,29 +1,32 @@
-// Copyright (c) 2009-2017 The Bitcoin Core developers 
-// Copyright (c) 2015-2017 The Dash developers 
-// Copyright (c) 2015-2017 The Bitsend developers
-// Distributed under the MIT software license, see the accompanying
+// Copyright (c) 2009-2013 The Bitcoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITSEND_CHECKPOINTS_H
-#define BITSEND_CHECKPOINTS_H
-
-#include "uint256.h"
+#ifndef BITCOIN_CHECKPOINT_H
+#define BITCOIN_CHECKPOINT_H
 
 #include <map>
 
 class CBlockIndex;
-struct CCheckpointData;
+class uint256;
 
-/**
- * Block-chain checkpoints are compiled-in sanity checks.
+/** Block-chain checkpoints are compiled-in sanity checks.
  * They are updated every release or three.
  */
 namespace Checkpoints
 {
+    // Returns true if block passes checkpoint checks
+    bool CheckBlock(int nHeight, const uint256& hash);
 
-//! Returns last CBlockIndex* in mapBlockIndex that is a checkpoint
-CBlockIndex* GetLastCheckpoint(const CCheckpointData& data);
+    // Return conservative estimate of total number of blocks, 0 if unknown
+    int GetTotalBlocksEstimate();
 
-} //namespace Checkpoints
+    // Returns last CBlockIndex* in mapBlockIndex that is a checkpoint
+    CBlockIndex* GetLastCheckpoint(const std::map<uint256, CBlockIndex*>& mapBlockIndex);
 
-#endif // BITSEND_CHECKPOINTS_H
+    double GuessVerificationProgress(CBlockIndex *pindex, bool fSigchecks = true);
+
+    extern bool fEnabled;
+}
+
+#endif

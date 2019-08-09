@@ -1,26 +1,23 @@
-// Copyright (c) 2011-2016 The Bitsend Core developers
-// Distributed under the MIT software license, see the accompanying
+// Copyright (c) 2011-2013 The Bitcoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITSEND_QT_WALLETVIEW_H
-#define BITSEND_QT_WALLETVIEW_H
+#ifndef WALLETVIEW_H
+#define WALLETVIEW_H
 
-#include "amount.h"
-#include "masternodelist.h"
 #include <QStackedWidget>
 
-class BitsendGUI;
+class BitcoinGUI;
 class ClientModel;
 class OverviewPage;
-class PlatformStyle;
 class ReceiveCoinsDialog;
 class SendCoinsDialog;
 class SendCoinsRecipient;
 class TransactionView;
 class WalletModel;
-class AddressBookPage;
 
 QT_BEGIN_NAMESPACE
+class QLabel;
 class QModelIndex;
 class QProgressDialog;
 QT_END_NAMESPACE
@@ -36,16 +33,16 @@ class WalletView : public QStackedWidget
     Q_OBJECT
 
 public:
-    explicit WalletView(const PlatformStyle *platformStyle, QWidget *parent);
+    explicit WalletView(QWidget *parent);
     ~WalletView();
 
-    void setBitsendGUI(BitsendGUI *gui);
+    void setBitcoinGUI(BitcoinGUI *gui);
     /** Set the client model.
         The client model represents the part of the core that communicates with the P2P network, and is wallet-agnostic.
     */
     void setClientModel(ClientModel *clientModel);
     /** Set the wallet model.
-        The wallet model represents a bitsend wallet, and offers access to the list of transactions, address book and sending
+        The wallet model represents a bitcoin wallet, and offers access to the list of transactions, address book and sending
         functionality.
     */
     void setWalletModel(WalletModel *walletModel);
@@ -57,32 +54,24 @@ public:
 private:
     ClientModel *clientModel;
     WalletModel *walletModel;
-    void *unlockContext;
 
     OverviewPage *overviewPage;
     QWidget *transactionsPage;
     ReceiveCoinsDialog *receiveCoinsPage;
     SendCoinsDialog *sendCoinsPage;
-    AddressBookPage *usedSendingAddressesPage;
-    AddressBookPage *usedReceivingAddressesPage;
-	MasternodeList* masternodeListPage;
-	
+
     TransactionView *transactionView;
-	
+
     QProgressDialog *progressDialog;
-    const PlatformStyle *platformStyle;
+    QLabel *transactionSum;
 
-
-public Q_SLOTS:
+public slots:
     /** Switch to overview (home) page */
     void gotoOverviewPage();
     /** Switch to history (transactions) page */
     void gotoHistoryPage();
     /** Switch to receive coins page */
-	/** Switch to masternode page */
-    void gotoMasternodePage();
     void gotoReceiveCoinsPage();
-	//void gotoBip38Tool()
     /** Switch to send coins page */
     void gotoSendCoinsPage(QString addr = "");
 
@@ -104,8 +93,10 @@ public Q_SLOTS:
     void changePassphrase();
     /** Ask for passphrase to unlock wallet temporarily */
     void unlockWallet();
-    /** Ask for passphrase to unlock wallet and return context*/
-    void requestUnlockWallet();
+    /** Lock wallet */
+    void lockWallet();
+    /** Open the print paper wallets dialog **/
+    void printPaperWallets();
 
     /** Show used sending addresses */
     void usedSendingAddresses();
@@ -117,23 +108,19 @@ public Q_SLOTS:
 
     /** Show progress dialog e.g. for rescan */
     void showProgress(const QString &title, int nProgress);
+    
+    /** Update selected DASH amount from transactionview */
+    void trxAmount(QString amount);
 
-    /** User has requested more information about the out of sync state */
-    void requestedSyncWarningInfo();
-
-Q_SIGNALS:
+signals:
     /** Signal that we want to show the main window */
     void showNormalIfMinimized();
     /**  Fired when a message should be reported to the user */
     void message(const QString &title, const QString &message, unsigned int style);
     /** Encryption status of wallet changed */
     void encryptionStatusChanged(int status);
-    /** HD-Enabled status of wallet changed (only possible during startup) */
-    void hdEnabledStatusChanged(int hdEnabled);
     /** Notify that a new transaction appeared */
-    void incomingTransaction(const QString& date, int unit, const CAmount& amount, const QString& type, const QString& address, const QString& label);
-    /** Notify that the out of sync warning icon has been pressed */
-    void outOfSyncWarningClicked();
+    void incomingTransaction(const QString& date, int unit, qint64 amount, const QString& type, const QString& address);
 };
 
-#endif // BITSEND_QT_WALLETVIEW_H
+#endif // WALLETVIEW_H

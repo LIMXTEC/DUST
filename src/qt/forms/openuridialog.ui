@@ -31,7 +31,8 @@
       </widget>
      </item>
      <item>
-      <widget class="QValidatedLineEdit" name="uriEdit"/>
+      <widget class="QValidatedLineEdit" name="uriEdit">
+      </widget>
      </item>
      <item>
       <widget class="QPushButton" name="selectFileButton">
@@ -39,10 +40,7 @@
         <string>Select payment request file</string>
        </property>
        <property name="text">
-        <string notr="true">…</string>
-       </property>
-       <property name="autoDefault">
-        <bool>false</bool>
+        <string notr="true">...</string>
        </property>
       </widget>
      </item>

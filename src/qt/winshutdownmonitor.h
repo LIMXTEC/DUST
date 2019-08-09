@@ -1,9 +1,9 @@
-// Copyright (c) 2014 The Bitsend Core developers
-// Distributed under the MIT software license, see the accompanying
+// Copyright (c) 2014 The Bitcoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITSEND_QT_WINSHUTDOWNMONITOR_H
-#define BITSEND_QT_WINSHUTDOWNMONITOR_H
+#ifndef WINSHUTDOWNMONITOR_H
+#define WINSHUTDOWNMONITOR_H
 
 #ifdef WIN32
 #include <QByteArray>
@@ -26,4 +26,4 @@ public:
 #endif
 #endif
 
-#endif // BITSEND_QT_WINSHUTDOWNMONITOR_H
+#endif // WINSHUTDOWNMONITOR_H

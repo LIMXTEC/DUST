@@ -1,21 +1,21 @@
-// Copyright (c) 2011-2016 The Bitsend Core developers
-// Distributed under the MIT software license, see the accompanying
+// Copyright (c) 2011-2013 The Bitcoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "walletframe.h"
 
-#include "bitsendgui.h"
+#include "bitcoingui.h"
 #include "walletview.h"
 
 #include <cstdio>
+#include <iostream>
 
 #include <QHBoxLayout>
 #include <QLabel>
 
-WalletFrame::WalletFrame(const PlatformStyle *_platformStyle, BitsendGUI *_gui) :
+WalletFrame::WalletFrame(BitcoinGUI *_gui) :
     QFrame(_gui),
-    gui(_gui),
-    platformStyle(_platformStyle)
+    gui(_gui)
 {
     // Leave HBox hook for adding a list view later
     QHBoxLayout *walletFrameLayout = new QHBoxLayout(this);
@@ -33,9 +33,9 @@ WalletFrame::~WalletFrame()
 {
 }
 
-void WalletFrame::setClientModel(ClientModel *_clientModel)
+void WalletFrame::setClientModel(ClientModel *clientModel)
 {
-    this->clientModel = _clientModel;
+    this->clientModel = clientModel;
 }
 
 bool WalletFrame::addWallet(const QString& name, WalletModel *walletModel)
@@ -43,8 +43,8 @@ bool WalletFrame::addWallet(const QString& name, WalletModel *walletModel)
     if (!gui || !clientModel || !walletModel || mapWalletViews.count(name) > 0)
         return false;
 
-    WalletView *walletView = new WalletView(platformStyle, this);
-    walletView->setBitsendGUI(gui);
+    WalletView *walletView = new WalletView(this);
+    walletView->setBitcoinGUI(gui);
     walletView->setClientModel(clientModel);
     walletView->setWalletModel(walletModel);
     walletView->showOutOfSyncWarning(bOutOfSync);
@@ -56,8 +56,6 @@ bool WalletFrame::addWallet(const QString& name, WalletModel *walletModel)
 
     // Ensure a walletView is able to show the main window
     connect(walletView, SIGNAL(showNormalIfMinimized()), gui, SLOT(showNormalIfMinimized()));
-
-    connect(walletView, SIGNAL(outOfSyncWarningClicked()), this, SLOT(outOfSyncWarningClicked()));
 
     return true;
 }
@@ -113,13 +111,6 @@ void WalletFrame::gotoOverviewPage()
     QMap<QString, WalletView*>::const_iterator i;
     for (i = mapWalletViews.constBegin(); i != mapWalletViews.constEnd(); ++i)
         i.value()->gotoOverviewPage();
-}
-
-void WalletFrame::gotoMasternodePage()
-{
-    QMap<QString, WalletView*>::const_iterator i;
-    for (i = mapWalletViews.constBegin(); i != mapWalletViews.constEnd(); ++i)
-        i.value()->gotoMasternodePage();
 }
 
 void WalletFrame::gotoHistoryPage()
@@ -185,11 +176,19 @@ void WalletFrame::unlockWallet()
         walletView->unlockWallet();
 }
 
-void WalletFrame::unlockWalletAndKeepUnlocked()
+void WalletFrame::printPaperWallets()
 {
     WalletView *walletView = currentWalletView();
     if (walletView)
-        walletView->requestUnlockWallet();
+        walletView->printPaperWallets();
+}
+
+
+void WalletFrame::lockWallet()
+{
+    WalletView *walletView = currentWalletView();
+    if (walletView)
+        walletView->lockWallet();
 }
 
 void WalletFrame::usedSendingAddresses()
@@ -205,18 +204,9 @@ void WalletFrame::usedReceivingAddresses()
     if (walletView)
         walletView->usedReceivingAddresses();
 }
-/* void WalletFrame::gotoBip38Tool()
-{
-    WalletView* walletView = currentWalletView();
-    if (walletView)
-        walletView->gotoBip38Tool();
-} */
+
 WalletView *WalletFrame::currentWalletView()
 {
     return qobject_cast<WalletView*>(walletStack->currentWidget());
 }
 
-void WalletFrame::outOfSyncWarningClicked()
-{
-    Q_EMIT requestedSyncWarningInfo();
-}

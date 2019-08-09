@@ -1,16 +1,10 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2017 The Bitcoin Core developers 
-// Copyright (c) 2015-2017 The Dash developers 
-// Copyright (c) 2015-2017 The Bitsend developers
-// Distributed under the MIT software license, see the accompanying
+// Copyright (c) 2009-2013 The Bitcoin developers
+// Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITSEND_COMPAT_H
-#define BITSEND_COMPAT_H
-
-#if defined(HAVE_CONFIG_H)
-#include "config/bitsend-config.h"
-#endif
+#ifndef _BITCOIN_COMPAT_H
+#define _BITCOIN_COMPAT_H
 
 #ifdef WIN32
 #ifdef _WIN32_WINNT
@@ -36,12 +30,10 @@
 #else
 #include <sys/fcntl.h>
 #include <sys/mman.h>
-#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <net/if.h>
 #include <netinet/in.h>
-#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <ifaddrs.h>
 #include <limits.h>
@@ -67,32 +59,19 @@ typedef u_int SOCKET;
 #define SOCKET_ERROR        -1
 #endif
 
+inline int myclosesocket(SOCKET& hSocket)
+{
+    if (hSocket == INVALID_SOCKET)
+        return WSAENOTSOCK;
 #ifdef WIN32
-#ifndef S_IRUSR
-#define S_IRUSR             0400
-#define S_IWUSR             0200
-#endif
+    int ret = closesocket(hSocket);
 #else
-#define MAX_PATH            1024
+    int ret = close(hSocket);
 #endif
-
-// As Solaris does not have the MSG_NOSIGNAL flag for send(2) syscall, it is defined as 0
-#if !defined(HAVE_MSG_NOSIGNAL) && !defined(MSG_NOSIGNAL)
-#define MSG_NOSIGNAL 0
-#endif
-
-/*#if HAVE_DECL_STRNLEN == 0
-size_t strnlen( const char *start, size_t max_len);
-#endif // HAVE_DECL_STRNLEN*/ //TODO--
-
-size_t strnlen_int( const char *start, size_t max_len);
-
-bool static inline IsSelectableSocket(SOCKET s) {
-#ifdef WIN32
-    return true;
-#else
-    return (s < FD_SETSIZE);
-#endif
+    hSocket = INVALID_SOCKET;
+    return ret;
 }
+#define closesocket(s)      myclosesocket(s)
 
-#endif // BITSEND_COMPAT_H
+
+#endif

@@ -1,32 +1,22 @@
-// Copyright (c) 2011-2016 The Bitsend Core developers
-// Distributed under the MIT software license, see the accompanying
+// Copyright (c) 2011-2014 The Bitcoin developers
+// Copyright (c) 2014-2015 The Bitsend developers
+// Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
-
-#if defined(HAVE_CONFIG_H)
-#include "config/bitsend-config.h"
-#endif
 
 #include "splashscreen.h"
 
-#include "networkstyle.h"
-
 #include "clientversion.h"
 #include "init.h"
-#include "util.h"
 #include "ui_interface.h"
-#include "version.h"
-
+#include "util.h"
 #ifdef ENABLE_WALLET
-#include "wallet/wallet.h"
+#include "wallet.h"
 #endif
 
 #include <QApplication>
-#include <QCloseEvent>
-#include <QDesktopWidget>
 #include <QPainter>
-#include <QRadialGradient>
 
-SplashScreen::SplashScreen(Qt::WindowFlags f, const QPixmap &pixmap) :
+SplashScreen::SplashScreen(const QPixmap &pixmap, Qt::WindowFlags f, bool isTestNet) :
     QSplashScreen(pixmap, f)
 {
     setAutoFillBackground(true);
@@ -42,7 +32,7 @@ SplashScreen::SplashScreen(Qt::WindowFlags f, const QPixmap &pixmap) :
     // define text to place
     QString titleText       = tr("Bitsend Core");
     QString versionText     = QString(tr("Version %1")).arg(QString::fromStdString(FormatFullVersion()));
-    QString copyrightTextBtc   = QChar(0xA9)+QString(" 2009-%1 ").arg(COPYRIGHT_YEAR) + QString(tr("The Bitsend Core developers"));
+    QString copyrightTextBtc   = QChar(0xA9)+QString(" 2009-%1 ").arg(COPYRIGHT_YEAR) + QString(tr("The Bitcoin Core developers"));
     QString copyrightTextDrk   = QChar(0xA9)+QString(" 2014-%1 ").arg(COPYRIGHT_YEAR) + QString(tr("The Bitsend Core developers"));
     QString testnetAddText  = QString(tr("[testnet]")); // define text to place as single text object
 
@@ -50,8 +40,12 @@ SplashScreen::SplashScreen(Qt::WindowFlags f, const QPixmap &pixmap) :
 
     // load the bitmap for writing some text over it
     QPixmap newPixmap;
-    newPixmap     = QPixmap(":/images/splash");
-    
+    if(isTestNet) {
+        newPixmap     = QPixmap(":/images/splash_testnet");
+    }
+    else {
+        newPixmap     = QPixmap(":/images/splash");
+    }
 
     QPainter pixPaint(&newPixmap);
     pixPaint.setPen(QColor(100,100,100));
@@ -79,14 +73,14 @@ SplashScreen::SplashScreen(Qt::WindowFlags f, const QPixmap &pixmap) :
     pixPaint.drawText(paddingLeft,paddingTop+titleCopyrightVSpace+12,copyrightTextDrk);
 
     // draw testnet string if testnet is on
-    /* if(isTestNet) {
+    if(isTestNet) {
         QFont boldFont = QFont(font, 10*fontFactor);
         boldFont.setWeight(QFont::Bold);
         pixPaint.setFont(boldFont);
         fm = pixPaint.fontMetrics();
         int testnetAddTextWidth  = fm.width(testnetAddText);
         pixPaint.drawText(newPixmap.width()-testnetAddTextWidth-10,newPixmap.height()-25,testnetAddText);
-    } */
+    }
 
     pixPaint.end();
 
@@ -102,14 +96,7 @@ SplashScreen::~SplashScreen()
 
 void SplashScreen::slotFinish(QWidget *mainWin)
 {
-    Q_UNUSED(mainWin);
-
-    /* If the window is minimized, hide() will be ignored. */
-    /* Make sure we de-minimize the splashscreen window before hiding */
-    if (isMinimized())
-        showNormal();
-    hide();
-    deleteLater(); // No more need for this
+    finish(mainWin);
 }
 
 static void InitMessage(SplashScreen *splash, const std::string &message)
@@ -127,10 +114,9 @@ static void ShowProgress(SplashScreen *splash, const std::string &title, int nPr
 }
 
 #ifdef ENABLE_WALLET
-void SplashScreen::ConnectWallet(CWallet* wallet)
+static void ConnectWallet(SplashScreen *splash, CWallet* wallet)
 {
-    wallet->ShowProgress.connect(boost::bind(ShowProgress, this, _1, _2));
-    connectedWallets.push_back(wallet);
+    wallet->ShowProgress.connect(boost::bind(ShowProgress, splash, _1, _2));
 }
 #endif
 
@@ -138,9 +124,8 @@ void SplashScreen::subscribeToCoreSignals()
 {
     // Connect signals to client
     uiInterface.InitMessage.connect(boost::bind(InitMessage, this, _1));
-    uiInterface.ShowProgress.connect(boost::bind(ShowProgress, this, _1, _2));
 #ifdef ENABLE_WALLET
-    uiInterface.LoadWallet.connect(boost::bind(&SplashScreen::ConnectWallet, this, _1));
+    uiInterface.LoadWallet.connect(boost::bind(ConnectWallet, this, _1));
 #endif
 }
 
@@ -148,33 +133,8 @@ void SplashScreen::unsubscribeFromCoreSignals()
 {
     // Disconnect signals from client
     uiInterface.InitMessage.disconnect(boost::bind(InitMessage, this, _1));
-    uiInterface.ShowProgress.disconnect(boost::bind(ShowProgress, this, _1, _2));
 #ifdef ENABLE_WALLET
-    Q_FOREACH(CWallet* const & pwallet, connectedWallets) {
-        pwallet->ShowProgress.disconnect(boost::bind(ShowProgress, this, _1, _2));
-    }
+    if(pwalletMain)
+        pwalletMain->ShowProgress.disconnect(boost::bind(ShowProgress, this, _1, _2));
 #endif
-}
-
-void SplashScreen::showMessage(const QString &message, int alignment, const QColor &color)
-{
-    curMessage = message;
-    curAlignment = alignment;
-    curColor = color;
-    update();
-}
-
-void SplashScreen::paintEvent(QPaintEvent *event)
-{
-    QPainter painter(this);
-    painter.drawPixmap(0, 0, pixmap);
-    QRect r = rect().adjusted(5, 5, -5, -5);
-    painter.setPen(curColor);
-    painter.drawText(r, curAlignment, curMessage);
-}
-
-void SplashScreen::closeEvent(QCloseEvent *event)
-{
-    StartShutdown(); // allows an "emergency" shutdown during startup
-    event->ignore();
 }
