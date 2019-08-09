@@ -109,6 +109,32 @@ JSON_H = \
   json/json_spirit_value.h \
   json/json_spirit_writer.h \
   json/json_spirit_writer_template.h
+  
+# Dust extensions
+DUST_H = \
+  dust/dust.h \
+  dust/dust_convert.h \
+  dust/dust_dex.h \
+  dust/dust_errors.h \
+  dust/dust_parse_string.h \
+  dust/dust_rpc.h \
+  dust/dust_sp.h \
+  dust/dust_tx.h \
+  dust/dust_version.h
+
+DUST_CPP = \
+  dust/dust.cpp \
+  dust/dust_convert.cpp \
+  dust/dust_dex.cpp \
+  dust/dust_parse_string.cpp \
+  dust/dust_rpc.cpp \
+  dust/dust_sp.cpp \
+  dust/dust_tx.cpp \
+  dust/dust_version.cpp
+
+BITCOIN_CORE_H += \
+  $(DUST_H)
+#
 
 obj/build.h: FORCE
 	@$(MKDIR_P) $(abs_top_builddir)/src/obj
@@ -196,6 +222,11 @@ libbitsend_common_a_SOURCES = \
   hash/cubehash.c \
   hash/blake.c \
   $(BITCOIN_CORE_H)
+  
+# Dust extensions
+libbitsend_common_a_SOURCES += \
+  $(DUST_CPP)
+
 
 if GLIBC_BACK_COMPAT
 libbitsend_common_a_SOURCES += compat/glibc_compat.cpp
@@ -207,6 +238,7 @@ libbitsend_cli_a_SOURCES = \
   $(BITCOIN_CORE_H)
 
 nodist_libbitsend_common_a_SOURCES = $(top_srcdir)/src/obj/build.h
+libbitcoin_common_a-dust_version.$(OBJEXT): obj/build.h 
 #
 
 # bitsendd binary #
